@@ -1,25 +1,26 @@
+// ✅ โหลดค่าจากไฟล์ .env
+require("dotenv").config();
+
 const express = require("express");
 const { Pool } = require("pg");
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000; // Render จะส่ง PORT มาเอง
 
-// 👇 ปรับค่า PostgreSQL ให้ตรงกับของคุณ
+// ✅ ตั้งค่า PostgreSQL connection โดยใช้ DATABASE_URL จาก .env
 const pool = new Pool({
-  user: "postgres",
-  host: "172.17.101.108",
-  database: "dbTWFERP",
-  password: "[m[kml9iu",
-  port: 4132,
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
 });
 
-// API ดึงข้อมูลเฉพาะคอลัมน์
+// ✅ route API
 app.get("/debtor_status_info", async (req, res) => {
   try {
     const { idcard, promise, province } = req.query;
 
-    // เงื่อนไข dynamic
-    const conditions = ["ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')"];
+    const conditions = [
+      "ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')",
+    ];
     const values = [];
     let idx = 1;
 
@@ -128,14 +129,14 @@ app.get("/debtor_status_info", async (req, res) => {
     `;
 
     const result = await pool.query(sql, values);
-    res.json(result.rows); // ✅ คืนเฉพาะฟิลด์ที่เลือกมา
+    res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Query Error:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
+// ✅ start server
 app.listen(port, () => {
- console.log(`✅ API server running at http://localhost:${port}`);
-
+  console.log(`✅ API server running at http://localhost:${port}`);
 });
