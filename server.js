@@ -1,25 +1,24 @@
-// ✅ โหลดค่าจากไฟล์ .env
-require("dotenv").config();
+require("dotenv").config(); // โหลดค่าจาก .env
 
 const express = require("express");
 const { Pool } = require("pg");
 
 const app = express();
-const port = process.env.PORT || 3000; // Render จะส่ง PORT มาเอง
+const port = process.env.PORT || 3000;
 
-// ✅ ตั้งค่า PostgreSQL connection โดยใช้ DATABASE_URL จาก .env
+// ✅ ใช้ connectionString จาก .env
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
 });
 
-// ✅ route API
+// API ดึงข้อมูลเฉพาะคอลัมน์
 app.get("/debtor_status_info", async (req, res) => {
   try {
     const { idcard, promise, province } = req.query;
 
     const conditions = [
-      "ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')",
+      "ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')"
     ];
     const values = [];
     let idx = 1;
@@ -136,7 +135,6 @@ app.get("/debtor_status_info", async (req, res) => {
   }
 });
 
-// ✅ start server
 app.listen(port, () => {
   console.log(`✅ API server running at http://localhost:${port}`);
 });
