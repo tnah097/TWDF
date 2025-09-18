@@ -6,10 +6,15 @@ const { Pool } = require("pg");
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ✅ ใช้ connectionString จาก .env
+// ใช้ connectionString จาก .env
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
+});
+
+// Route health check
+app.get("/", (req, res) => {
+  res.send("✅ API is running. Use /debtor_status_info for queries.");
 });
 
 // API ดึงข้อมูลเฉพาะคอลัมน์
