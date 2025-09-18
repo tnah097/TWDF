@@ -1,0 +1,140 @@
+const express = require("express");
+const { Pool } = require("pg");
+
+const app = express();
+const port = 3000;
+
+// 👇 ตั้งค่า PostgreSQL ของคุณ
+const pool = new Pool({
+  user: "postgres",
+  host: "172.17.101.108",
+  database: "dbTWFERP",
+  password: "[m[kml9iu",
+  port: 4132,
+});
+
+// 👇 API ดึงข้อมูลเฉพาะคอลัมน์ที่กำหนด + ปลอดภัย
+app.get("/debtor_status_info", async (req, res) => {
+  try {
+    let { cardid, promise, province, limit, offset } = req.query;
+    const values = [];
+    const conditions = [
+      `ds.ds_status_project IN ('เปิดโครงการ','ปิดโครงการ','ระหว่างดำเนินคดี')`
+    ];
+
+    // ✅ validate & add filters
+    if (cardid && cardid.trim() !== "") {
+      if (!/^\d{13}$/.test(cardid.trim())) return res.status(400).send("เลขบัตรประชาชนไม่ถูกต้อง");
+      values.push(cardid.trim());
+      conditions.push(`w.wfri_id_card = $${values.length}`);
+    }
+
+    if (promise && promise.trim() !== "") {
+      values.push(promise.trim());
+      conditions.push(`ds.ds_number_promise = $${values.length}`);
+    }
+
+    if (province && province.trim() !== "") {
+      values.push(province.trim());
+      conditions.push(`p.dpd_province = $${values.length}`);
+    }
+
+    // ✅ limit / offset ป้องกันดึงข้อมูลจำนวนมาก
+    limit = limit ? parseInt(limit) : 1000;
+    offset = offset ? parseInt(offset) : 0;
+    if (isNaN(limit) || limit > 5000) limit = 1000; // max 5000
+    if (isNaN(offset) || offset < 0) offset = 0;
+    values.push(limit, offset);
+
+    const query = `
+      WITH province AS (
+        SELECT id, dpd_province
+        FROM define_province_data
+      ),
+      paid_summary AS (
+        SELECT 
+          tpm_ref,
+          SUM(tpm_paid_principle) AS sum_principle,
+          SUM(tpm_re_money) AS sum_re_money,
+          SUM(tpm_interest) AS sum_interest,
+          SUM(tpm_re_interest) AS sum_re_interest,
+          SUM(tpm_change) AS sum_change,
+          SUM(tpm_re_change) AS sum_re_change,
+          SUM(tpm_miss_interest) AS sum_miss_interest,
+          SUM(t.old_interest) AS sum_old_interest,
+          SUM(tpm_re_miss_interest) AS sum_re_miss_interest,
+          SUM(t.old_re_interest) AS sum_old_re_interest,
+          SUM(
+            CASE
+              WHEN (t.tpm_end_paid + INTERVAL '5 day') >= CURRENT_DATE
+                AND (t.tpm_re_money IS NULL OR t.tpm_re_money = 0)
+              THEN t.tpm_paid_principle
+              WHEN (t.tpm_end_paid + INTERVAL '5 day') >= CURRENT_DATE
+                AND t.tpm_paid_principle > t.tpm_re_money
+              THEN t.tpm_paid_principle - t.tpm_re_money
+              ELSE 0
+            END
+          ) AS sum_not_due
+        FROM table_paid_money t
+        WHERE tmp_paystatus != 'Canceled'
+        GROUP BY tpm_ref
+      )
+      SELECT
+        w.wfri_id_card   AS "เลขบัตรปชช",
+        w.wfri_full_name AS "ชื่อนามสกุล",
+        p.dpd_province   AS "จังหวัด",
+        ddd.ddd_district AS "อำเภอ",
+        sdd.dsdd_sub_district AS "ตำบล",
+        ds.ds_name_year  AS "ปีงบประมาณ",  
+        ds.ds_number_promise AS "เลขที่สัญญา",
+        CASE 
+          WHEN r.mrpr_tb_position = 'position_1'
+            THEN 'ผู้แทนกลุ่ม เสนอโครงการ'
+          ELSE 'ผู้ร่วมโครงการ'
+        END AS "สถานะผู้กู้",
+        ds.ds_project AS "ชื่อโครงการ",
+        ds.ds_status_project AS "สถานะโครงการ",
+        ds.ds_rev_money AS "เงินที่อนุมัติ",
+        ps.sum_principle - ps.sum_re_money AS "เงินต้นคงเหลือ",
+        ps.sum_not_due AS "หนี้ยังไม่ถึงกำหนดชำระ",
+        ps.sum_interest - ps.sum_re_interest AS "ดอกเบี้ยคงเหลือ",
+        ps.sum_change - ps.sum_re_change AS "เบี้ยปรับคงเหลือ",
+        (ps.sum_miss_interest + ps.sum_old_interest 
+         - ps.sum_re_miss_interest - ps.sum_old_re_interest) AS "ดอกเบี้ยผิดนัดคงเหลือ",
+        ((ps.sum_principle - ps.sum_re_money) 
+         + (ps.sum_interest - ps.sum_re_interest) 
+         + (ps.sum_change - ps.sum_re_change) 
+         + ((ps.sum_miss_interest + ps.sum_old_interest) 
+           - (ps.sum_re_miss_interest + ps.sum_old_re_interest))) AS "รวม"
+      FROM women_fund_register_info w
+      LEFT JOIN money_revolving_project_record_table r 
+        ON r.mrpr_tb_id_card = w.id
+      LEFT JOIN money_revolving_project_record_info m 
+        ON m.id = r.mrpr_tb_m2o_ref
+      LEFT JOIN debtor_status_info ds 
+        ON m.id = ds.ds_number_request
+      LEFT JOIN define_sub_district_data sdd
+        ON sdd.id = ds.ds_tambon::INTEGER
+      LEFT JOIN define_district_data ddd
+        ON ddd.id = sdd.dsdd_district_ref
+      LEFT JOIN province p
+        ON ds.ds_code_province = p.id
+      LEFT JOIN paid_summary ps 
+        ON ps.tpm_ref = ds.id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ds.ds_number_promise, r.mrpr_tb_position
+      LIMIT $${values.length - 1} OFFSET $${values.length};
+    `;
+
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Database error");
+  }
+});
+
+app.listen(port, () => {
+  console.log(`✅ API server running at http://localhost:${port}`);
+});
