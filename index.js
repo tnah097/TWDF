@@ -48,6 +48,7 @@ app.get("/debtor_status_info", async (req, res) => {
       idx++;
     }
 
+    // 5. Corrected SQL query: Added 'public.' prefix to all table names
     const sql = `
       WITH ds_summary AS (
         SELECT
@@ -65,7 +66,7 @@ app.get("/debtor_status_info", async (req, res) => {
           ds.remaining_fine,
           ds.remaining_interest_old_new,
           ds.remaining_sum
-        FROM debtor_status_info ds
+        FROM public.debtor_status_info ds
         WHERE ${conditions.join(" AND ")}
       ),
       valid_payment AS (
@@ -82,7 +83,7 @@ app.get("/debtor_status_info", async (req, res) => {
               ELSE 0
             END
           ) AS debt_not_due
-        FROM table_paid_money
+        FROM public.table_paid_money
         WHERE tmp_paystatus IS DISTINCT FROM 'Canceled'
         GROUP BY tpm_ref
       )
@@ -108,17 +109,17 @@ app.get("/debtor_status_info", async (req, res) => {
         SUM(COALESCE(ds.remaining_interest_old_new, 0)) AS "ดอกเบี้ยผิดนัดคงเหลือ",
         SUM(COALESCE(ds.remaining_sum, 0)) AS "รวมคงเหลือ"
       FROM ds_summary ds
-      JOIN money_revolving_project_record_info m
+      JOIN public.money_revolving_project_record_info m
         ON m.id = ds.ds_number_request
-      JOIN money_revolving_project_record_table r
+      JOIN public.money_revolving_project_record_table r
         ON r.mrpr_tb_m2o_ref = m.id
-      JOIN women_fund_register_info w
+      JOIN public.women_fund_register_info w
         ON w.id = r.mrpr_tb_id_card
-      LEFT JOIN define_sub_district_data sdd
+      LEFT JOIN public.define_sub_district_data sdd
         ON sdd.id = ds.ds_tambon::INTEGER
-      LEFT JOIN define_district_data ddd
+      LEFT JOIN public.define_district_data ddd
         ON ddd.id = sdd.dsdd_district_ref
-      LEFT JOIN define_province_data p
+      LEFT JOIN public.define_province_data p
         ON ds.ds_code_province = p.id
       LEFT JOIN valid_payment pm
         ON pm.tpm_ref = ds.id
