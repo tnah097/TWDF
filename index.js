@@ -21,6 +21,20 @@ app.get("/", (req, res) => {
   res.send("API is running!");
 });
 
+// 5. Add a new endpoint to check the database connection
+app.get("/check_db", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT current_database();");
+    res.json({
+      message: "Connected to database successfully!",
+      database_name: result.rows[0].current_database
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to connect to database." });
+  }
+});
+
 // Your API endpoint remains the same
 app.get("/debtor_status_info", async (req, res) => {
   try {
@@ -48,7 +62,7 @@ app.get("/debtor_status_info", async (req, res) => {
       idx++;
     }
 
-    // 5. Corrected SQL query: Added 'public.' prefix to all table names
+    // 6. Corrected SQL query: Added 'public.' prefix to all table names
     const sql = `
       WITH ds_summary AS (
         SELECT
