@@ -1,1 +1,8 @@
+# node_modules
+node_modules/
+
+# ไฟล์ environment
 .env
+
+# macOS hidden files
+.DS_Store
