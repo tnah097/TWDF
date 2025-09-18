@@ -1,46 +1,26 @@
-// 1. Add this line at the very top to load environment variables
-require('dotenv').config();
+// ✅ โหลดค่าจากไฟล์ .env
+require("dotenv").config();
 
 const express = require("express");
 const { Pool } = require("pg");
 
 const app = express();
-// 2. Corrected port definition: Use Render's PORT environment variable
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3000; // Render จะส่ง PORT มาเอง
 
-// 3. Corrected database connection string: Use the name you set in Render
+// ✅ ตั้งค่า PostgreSQL connection โดยใช้ DATABASE_URL จาก .env
 const pool = new Pool({
-  connectionString: process.env.twdf_dashboard,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
 });
 
-// 4. Add a default route to prevent "Cannot GET /" error
-app.get("/", (req, res) => {
-  res.send("API is running!");
-});
-
-// 5. Add a new endpoint to check the database connection
-app.get("/check_db", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT current_database();");
-    res.json({
-      message: "Connected to database successfully!",
-      database_name: result.rows[0].current_database
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to connect to database." });
-  }
-});
-
-// Your API endpoint remains the same
+// ✅ route API
 app.get("/debtor_status_info", async (req, res) => {
   try {
     const { idcard, promise, province } = req.query;
 
-    const conditions = ["ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')"];
+    const conditions = [
+      "ds.ds_status_project IN ('เปิดโครงการ','ระหว่างดำเนินคดี','ปิดโครงการ')",
+    ];
     const values = [];
     let idx = 1;
 
@@ -62,7 +42,6 @@ app.get("/debtor_status_info", async (req, res) => {
       idx++;
     }
 
-    // 6. Corrected SQL query: Added 'public.' prefix to all table names
     const sql = `
       WITH ds_summary AS (
         SELECT
@@ -80,7 +59,7 @@ app.get("/debtor_status_info", async (req, res) => {
           ds.remaining_fine,
           ds.remaining_interest_old_new,
           ds.remaining_sum
-        FROM public.debtor_status_info ds
+        FROM debtor_status_info ds
         WHERE ${conditions.join(" AND ")}
       ),
       valid_payment AS (
@@ -89,15 +68,15 @@ app.get("/debtor_status_info", async (req, res) => {
           SUM(
             CASE
               WHEN (tpm_end_paid + INTERVAL '5 day') >= CURRENT_DATE
-                  AND COALESCE(tpm_re_money, 0) = 0
+                   AND COALESCE(tpm_re_money, 0) = 0
               THEN tpm_paid_principle
               WHEN (tpm_end_paid + INTERVAL '5 day') >= CURRENT_DATE
-                  AND tpm_paid_principle > COALESCE(tpm_re_money, 0)
+                   AND tpm_paid_principle > COALESCE(tpm_re_money, 0)
               THEN tpm_paid_principle - tpm_re_money
               ELSE 0
             END
           ) AS debt_not_due
-        FROM public.table_paid_money
+        FROM table_paid_money
         WHERE tmp_paystatus IS DISTINCT FROM 'Canceled'
         GROUP BY tpm_ref
       )
@@ -112,28 +91,28 @@ app.get("/debtor_status_info", async (req, res) => {
         CASE WHEN r.mrpr_tb_position = 'position_1'
              THEN 'ผู้แทนกลุ่ม เสนอโครงการ'
              ELSE 'ผู้ร่วมโครงการ'
-        END AS "สถานะผู้กู้",
+        END AS สถานะผู้กู้,
         ds.ds_project,
         ds.ds_status_project,
         ds.ds_rev_money,
-        SUM(COALESCE(ds.remaining_principal, 0)) AS "เงินต้นคงเหลือ",
-        COALESCE(pm.debt_not_due,0) AS "หนี้_ยังไม่ถึงกำหนด",
-        SUM(COALESCE(ds.remaining_interest, 0)) AS "ดอกเบี้ยคงเหลือ",
-        SUM(COALESCE(ds.remaining_fine, 0)) AS "เบี้ยปรับคงเหลือ",
-        SUM(COALESCE(ds.remaining_interest_old_new, 0)) AS "ดอกเบี้ยผิดนัดคงเหลือ",
-        SUM(COALESCE(ds.remaining_sum, 0)) AS "รวมคงเหลือ"
+        SUM(COALESCE(ds.remaining_principal, 0)) AS เงินต้นคงเหลือ,
+        COALESCE(pm.debt_not_due,0) AS หนี้_ยังไม่ถึงกำหนด,
+        SUM(COALESCE(ds.remaining_interest, 0))  AS ดอกเบี้ยคงเหลือ,
+        SUM(COALESCE(ds.remaining_fine, 0))      AS เบี้ยปรับคงเหลือ,
+        SUM(COALESCE(ds.remaining_interest_old_new, 0)) AS ดอกเบี้ยผิดนัดคงเหลือ,
+        SUM(COALESCE(ds.remaining_sum, 0))       AS รวมคงเหลือ
       FROM ds_summary ds
-      JOIN public.money_revolving_project_record_info m
+      JOIN money_revolving_project_record_info m
         ON m.id = ds.ds_number_request
-      JOIN public.money_revolving_project_record_table r
+      JOIN money_revolving_project_record_table r
         ON r.mrpr_tb_m2o_ref = m.id
-      JOIN public.women_fund_register_info w
+      JOIN women_fund_register_info w
         ON w.id = r.mrpr_tb_id_card
-      LEFT JOIN public.define_sub_district_data sdd
+      LEFT JOIN define_sub_district_data sdd
         ON sdd.id = ds.ds_tambon::INTEGER
-      LEFT JOIN public.define_district_data ddd
+      LEFT JOIN define_district_data ddd
         ON ddd.id = sdd.dsdd_district_ref
-      LEFT JOIN public.define_province_data p
+      LEFT JOIN define_province_data p
         ON ds.ds_code_province = p.id
       LEFT JOIN valid_payment pm
         ON pm.tpm_ref = ds.id
@@ -152,11 +131,12 @@ app.get("/debtor_status_info", async (req, res) => {
     const result = await pool.query(sql, values);
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Query Error:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
+// ✅ start server
 app.listen(port, () => {
   console.log(`✅ API server running at http://localhost:${port}`);
 });
