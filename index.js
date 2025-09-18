@@ -5,14 +5,20 @@ const express = require("express");
 const { Pool } = require("pg");
 
 const app = express();
-const port = 3000;
+// 2. Corrected port definition: Use Render's PORT environment variable
+const port = process.env.PORT || 3000;
 
-// 2. This is the corrected database connection pool
+// 3. Corrected database connection string: Use the name you set in Render
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.twdf_dashboard,
   ssl: {
     rejectUnauthorized: false
   }
+});
+
+// 4. Add a default route to prevent "Cannot GET /" error
+app.get("/", (req, res) => {
+  res.send("API is running!");
 });
 
 // Your API endpoint remains the same
@@ -97,10 +103,10 @@ app.get("/debtor_status_info", async (req, res) => {
         ds.ds_rev_money,
         SUM(COALESCE(ds.remaining_principal, 0)) AS "เงินต้นคงเหลือ",
         COALESCE(pm.debt_not_due,0) AS "หนี้_ยังไม่ถึงกำหนด",
-        SUM(COALESCE(ds.remaining_interest, 0))  AS "ดอกเบี้ยคงเหลือ",
-        SUM(COALESCE(ds.remaining_fine, 0))      AS "เบี้ยปรับคงเหลือ",
+        SUM(COALESCE(ds.remaining_interest, 0)) AS "ดอกเบี้ยคงเหลือ",
+        SUM(COALESCE(ds.remaining_fine, 0)) AS "เบี้ยปรับคงเหลือ",
         SUM(COALESCE(ds.remaining_interest_old_new, 0)) AS "ดอกเบี้ยผิดนัดคงเหลือ",
-        SUM(COALESCE(ds.remaining_sum, 0))       AS "รวมคงเหลือ"
+        SUM(COALESCE(ds.remaining_sum, 0)) AS "รวมคงเหลือ"
       FROM ds_summary ds
       JOIN money_revolving_project_record_info m
         ON m.id = ds.ds_number_request
